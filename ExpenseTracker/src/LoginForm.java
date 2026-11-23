@@ -1,18 +1,7 @@
 import javax.swing.*;
 import java.awt.*;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.util.HashMap;
-import java.util.Map;
 
 public class LoginForm extends JFrame {
-    // In-memory accounts: username -> hashed password (lost when the app closes)
-    private static final Map<String, String> accounts = new HashMap<>();
-
-    static {
-        accounts.put("123", hash("123")); // default test account
-    }
-
     private final JTextField usernameField = new JTextField(15);
     private final JPasswordField passwordField = new JPasswordField(15);
 
@@ -45,9 +34,14 @@ public class LoginForm extends JFrame {
         c.gridx = 0; c.gridy = 3; c.gridwidth = 2;
         panel.add(buttons, c);
 
-        add(panel);
-        getRootPane().setDefaultButton(loginBtn); // Enter key = Login
+        JLabel hint = new JLabel("<html><center>Test accounts: 123/123, advisor/advisor123, user/user123</center></html>",
+                SwingConstants.CENTER);
+        hint.setFont(hint.getFont().deriveFont(10f));
+        c.gridy = 4;
+        panel.add(hint, c);
 
+        add(panel);
+        getRootPane().setDefaultButton(loginBtn);
         loginBtn.addActionListener(e -> login());
         registerBtn.addActionListener(e -> register());
 
@@ -57,17 +51,16 @@ public class LoginForm extends JFrame {
     }
 
     private void login() {
-        String user = usernameField.getText().trim();
+        String name = usernameField.getText().trim();
         String pass = new String(passwordField.getPassword());
-
-        if (user.isEmpty() || pass.isEmpty()) {
+        if (name.isEmpty() || pass.isEmpty()) {
             message("Please enter your username and password.", JOptionPane.WARNING_MESSAGE);
             return;
         }
-        String stored = accounts.get(user);
-        if (stored != null && stored.equals(hash(pass))) {
+        User user = DataStore.findByName(name);
+        if (user != null && user.login(pass)) {
             dispose();
-            new ExpenseTrackerApp().setVisible(true); // open the main app
+            new ExpenseTrackerApp(user).setVisible(true);
         } else {
             message("Invalid username or password.", JOptionPane.ERROR_MESSAGE);
             passwordField.setText("");
@@ -75,37 +68,37 @@ public class LoginForm extends JFrame {
     }
 
     private void register() {
-        String user = usernameField.getText().trim();
+        String name = usernameField.getText().trim();
         String pass = new String(passwordField.getPassword());
-
-        if (user.isEmpty() || pass.length() < 4) {
+        if (name.isEmpty() || pass.length() < 4) {
             message("Enter a username and a password of at least 4 characters, then click Register.",
                     JOptionPane.WARNING_MESSAGE);
             return;
         }
-        if (accounts.containsKey(user)) {
-            message("That username is already taken.", JOptionPane.ERROR_MESSAGE);
+        JTextField emailField = new JTextField();
+        JComboBox<String> roleBox = new JComboBox<>(new String[]{"User", "Financial Advisor"});
+        Object[] form = {"Email:", emailField, "Account type:", roleBox};
+        int ok = JOptionPane.showConfirmDialog(this, form, "Register", JOptionPane.OK_CANCEL_OPTION);
+        if (ok != JOptionPane.OK_OPTION) return;
+
+        String email = emailField.getText().trim();
+        if (!email.contains("@")) {
+            message("Please enter a valid email.", JOptionPane.WARNING_MESSAGE);
             return;
         }
-        accounts.put(user, hash(pass));
-        passwordField.setText("");
-        message("Account created. You can now log in.", JOptionPane.INFORMATION_MESSAGE);
+        User user = roleBox.getSelectedIndex() == 1
+                ? new FinancialAdvisor(name, email, pass, "General")
+                : new User(name, email, pass);
+        if (user.register()) {
+            passwordField.setText("");
+            message("Account created. You can now log in.", JOptionPane.INFORMATION_MESSAGE);
+        } else {
+            message("That username is already taken.", JOptionPane.ERROR_MESSAGE);
+        }
     }
 
     private void message(String text, int type) {
         JOptionPane.showMessageDialog(this, text, "Login", type);
-    }
-
-    private static String hash(String text) {
-        try {
-            byte[] bytes = MessageDigest.getInstance("SHA-256")
-                    .digest(text.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            for (byte b : bytes) sb.append(String.format("%02x", b));
-            return sb.toString();
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
     }
 
     public static void main(String[] args) {
